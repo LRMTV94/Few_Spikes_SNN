@@ -2,6 +2,6 @@
 __pycache__/
 *.pth
 *.pt
-data/
+/data/
 .ipynb_checkpoints/
 *.pyc
