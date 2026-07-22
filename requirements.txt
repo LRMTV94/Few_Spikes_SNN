@@ -36,6 +36,7 @@ threadpoolctl==3.5.0
 torch==2.4.1
 torchinfo==1.8.0
 torchvision==0.19.1
+tqdm==4.69.0
 triton==3.0.0
 typing-extensions==4.13.2
 zipp==3.20.2
