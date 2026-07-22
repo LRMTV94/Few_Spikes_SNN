@@ -19,7 +19,7 @@ print(f"Device:{device}")
 # Loading Syntethic Dataset
 
 train_ds = RingCountingDataset(n_events=5000, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=0)
-test_ds = RingCountingDataset(n_events=500, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=0)
+test_ds = RingCountingDataset(n_events=500, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=1)
 
 print("\n")
 print(f"Loaded Completed!")
