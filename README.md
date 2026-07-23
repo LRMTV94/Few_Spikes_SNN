@@ -104,7 +104,7 @@ activation — costs only 0.6 pp.
 ### Pruning
 
 <p align="center">
-<img src="figures/pruning.png" alt="" width="850">
+<img src="figures/pruning.png" alt="" width="750">
 </p>
 
 <div align="center">
