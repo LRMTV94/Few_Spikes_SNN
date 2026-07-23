@@ -80,7 +80,9 @@ budget**, with ~56% of neurons silent for any given input.
 
 ### Accuracy vs K
 
-![Accuracy vs K](figures/accuracy_vs_K.png)
+<p align="center">
+<img src="figures/accuracy_vs_K.png" alt="" width="1250">
+</p>
 
 <div align="center">
 
@@ -101,7 +103,9 @@ activation — costs only 0.6 pp.
 
 ### Pruning
 
-![Pruning](figures/pruning.png)
+<p align="center">
+<img src="figures/pruning.png" alt="" width="850">
+</p>
 
 <div align="center">
 
