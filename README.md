@@ -45,7 +45,7 @@ fast and energy-efficient.
 | Output | number of rings (1–3) |
 | Difficulty | overlapping rings, uniform dark noise, ~6% hit occupancy |
 
-<\div>
+</div>
    
 > Detector geometry and all parameters are deliberately generic and do not
 > correspond to any specific experiment. The dataset is fully synthetic and
@@ -59,10 +59,14 @@ three FS neurons and raw logits from the final linear layer (304,643 parameters)
 
 ### FS vs full-precision baseline
 
+<div align="center">
+
 | Model | Accuracy (5 seeds) | Spikes / neuron |
 |---|---|---|
 | ReLU MLP (baseline) | 86.01% ± 0.36 | — |
 | **FS MLP (K=4)** | **85.72% ± 0.22** | **0.86 / 4** |
+
+</div>
 
 Paired seeds, identical data. The 0.3 pp gap is not distinguishable from seed
 variability: quantising activations into at most 4 spikes costs essentially
