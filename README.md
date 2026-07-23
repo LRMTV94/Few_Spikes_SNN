@@ -65,6 +65,8 @@ variability: quantising activations into at most 4 spikes costs essentially
 nothing on this task, and the network in fact uses only **21% of its spike
 budget**, with ~56% of neurons silent for any given input.
 
+![Confusion matrix](figures/confusion_matrix.png)
+
 ### Accuracy vs K
 
 ![Accuracy vs K](figures/accuracy_vs_K.png)
