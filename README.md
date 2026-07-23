@@ -3,12 +3,10 @@
 Energy-efficient inference with few-spikes (FS) neurons, applied to a synthetic
 ring-counting task on a sparse sensor grid.
 
-**Results in one line:** an FS spiking MLP reaches **85.7% ± 0.2** accuracy,
+**Results:** an FS spiking MLP reaches **85.7% ± 0.2** accuracy,
 within 0.3 pp of a full-precision ReLU network (**86.0% ± 0.4**), while emitting
 only **0.86 spikes per neuron** out of K=4 — and **80% of its weights can be
 removed at no accuracy cost**.
-
-![Sample events](figures/sample_events.png)
 
 ---
 
