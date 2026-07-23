@@ -37,12 +37,15 @@ Counting Cherenkov-like rings on a sparse sensor grid, a problem motivated by
 low-latency trigger systems in particle physics, where inference must be both
 fast and energy-efficient.
 
+<div align="center">
+   
 | | |
 |---|---|
 | Input | binary hits on an octagonal grid (32×32, ~880 active sensors) |
 | Output | number of rings (1–3) |
 | Difficulty | overlapping rings, uniform dark noise, ~6% hit occupancy |
-
+<\div>
+   
 > Detector geometry and all parameters are deliberately generic and do not
 > correspond to any specific experiment. The dataset is fully synthetic and
 > reproducible from a seed — no data files are distributed or required.
