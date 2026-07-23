@@ -82,6 +82,8 @@ budget**, with ~56% of neurons silent for any given input.
 
 ![Accuracy vs K](figures/accuracy_vs_K.png)
 
+<div align="center">
+
 | K | Accuracy (5 seeds) |
 |---|---|
 | 1 | 85.16% ± 0.25 |
@@ -89,6 +91,8 @@ budget**, with ~56% of neurons silent for any given input.
 | 4 | 85.72% ± 0.22 |
 | 8 | 85.70% ± 0.32 |
 | 16 | 85.74% ± 0.14 |
+
+</div>
 
 Accuracy **saturates at K=4**: going from K=1 to K=4 gains 0.56 pp, while K=4, 8
 and 16 are statistically indistinguishable. K=4 is selected as the smallest K
@@ -98,6 +102,8 @@ activation — costs only 0.6 pp.
 ### Pruning
 
 ![Pruning](figures/pruning.png)
+
+<div align="center">
 
 | Weight sparsity | One-shot | Fine-tuned | Spikes / neuron | Silent |
 |---|---|---|---|---|
@@ -110,6 +116,8 @@ activation — costs only 0.6 pp.
 | 92% | 34.38% ± 1.14 | 80.13% ± 0.76 | 0.87 ± 0.01 | 56.4% |
 | 95% | 33.72% ± 0.00 | 65.53% ± 12.96 | 0.87 ± 0.01 | 56.3% |
 | 98% | 33.28% ± 0.77 | 37.99% ± 3.71 | 0.84 ± 0.03 | 56.0% |
+
+</div>
 
 <sub>Layer-wise L1 magnitude pruning on linear layers only; mean ± std over 3
 seeds; fine-tuning for 5 epochs at LR/10 with pruning masks kept active. The
