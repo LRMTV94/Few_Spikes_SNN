@@ -74,7 +74,7 @@ nothing on this task, and the network in fact uses only **21% of its spike
 budget**, with ~56% of neurons silent for any given input.
 
 <p align="center">
-<img src="figures/confusion_matrix.png" alt="" width="300">
+<img src="figures/confusion_matrix.png" alt="" width="450">
 </p>
 
 
