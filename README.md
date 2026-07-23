@@ -8,6 +8,8 @@ within 0.3 pp of a full-precision ReLU network (**86.0% ± 0.4**), while emittin
 only **0.86 spikes per neuron** out of K=4 — and **80% of its weights can be
 removed at no accuracy cost**.
 
+![Sample events](figures/sample_events.png)
+
 ---
 
 ## Few-spikes neurons
