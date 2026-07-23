@@ -44,6 +44,7 @@ fast and energy-efficient.
 | Input | binary hits on an octagonal grid (32×32, ~880 active sensors) |
 | Output | number of rings (1–3) |
 | Difficulty | overlapping rings, uniform dark noise, ~6% hit occupancy |
+
 <\div>
    
 > Detector geometry and all parameters are deliberately generic and do not
