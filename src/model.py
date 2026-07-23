@@ -41,11 +41,16 @@ class FSNeuron(nn.Module):
       s = spike(v - self.T[i], self.width)
       out = out + s * self.d[i]
       v = v - s * self.h[i]
+      
+      spike_count = spike_count + s 
+    self.last_spike_count = spike_count.detach()
+    
     return out
 
 class FSNetwork(nn.Module):
   def __init__(self, input, output, K, width):
     super().__init__()
+    self.K = K
     self.net = nn.Sequential(
        nn.Linear(input,256),
        nn.BatchNorm1d(256),

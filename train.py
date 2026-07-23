@@ -7,7 +7,7 @@ import sklearn
 
 from torchinfo import summary
 from src.data.ring_synthetic import RingCountingDataset
-from src.model import FSNetwork
+from src.model import FSNetwork, FSNeuron
 from torch.utils.data import DataLoader
 from sklearn.metrics import ConfusionMatrixDisplay
 from tqdm.auto import tqdm
@@ -18,8 +18,8 @@ print(f"Device:{device}")
 
 # Loading Syntethic Dataset
 
-train_ds = RingCountingDataset(n_events=5000, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=0)
-test_ds = RingCountingDataset(n_events=500, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=1)
+train_ds = RingCountingDataset(n_events=10000, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=0)
+test_ds = RingCountingDataset(n_events=10000, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=1)
 
 print("\n")
 print(f"Loaded Completed!")
@@ -46,7 +46,7 @@ for name, p in model.named_parameters():
   print(f" Name:{name},\t Parameters:{p.requires_grad}")
 print("\n")
 
-print(f"Training+Test MLP-Augmented\n")
+print(f"Training+Test FS-MLP\n")
 
 for epoch in range(epochs):
   loss_=0
@@ -65,18 +65,32 @@ for epoch in range(epochs):
   print(f"Loss:{(loss_/len(train_dl)):.2f}, Epoch: {epoch+1}")
 
 model.eval()
+fs_layers = [m for m in model.net if isinstance(m, FSNeuron)]
+spike_sum = torch.zeros(len(fs_layers))
+silent_sum = torch.zeros(len(fs_layers))
+n_batches = 0
+
 with torch.no_grad():
-    for x,y in test_dl:
-      x = x.reshape(x.shape[0], -1).to(device)
-      y = y.to(device)
-      pred = model(x).argmax(dim=1)
-      correct += (pred==y).sum().item()
-      total += y.shape[0]
+    for x, y in test_dl:
+        x = x.reshape(x.shape[0], -1).to(device)
+        y = y.to(device)
+        pred = model(x).argmax(dim=1)
+        correct += (pred == y).sum().item()
+        total += y.shape[0]
+        cm += torch.bincount(y * 3 + pred, minlength=9).reshape(3, 3)
 
-      cm += torch.bincount(y * 3 + pred, minlength=9).reshape(3, 3)
+        for i, m in enumerate(fs_layers):          # dopo il forward
+            spike_sum[i] += m.last_spike_count.mean().item()
+            silent_sum[i] += (m.last_spike_count == 0).float().mean().item()
+        n_batches += 1
 
-print("\n")
-print(f"Total accuracy FS-MLP:{(correct/total)*100:.2f}%\n\n\n")
+spikes = spike_sum / n_batches
+silent = silent_sum / n_batches
+
+print(f"\nTotal accuracy FS-MLP: {(correct/total)*100:.2f}%")
+for i, (s, si) in enumerate(zip(spikes, silent), 1):
+    print(f"  FS layer {i}: {s:.2f}/{model.K} spikes/neuron | silent {si*100:.1f}%")
+print(f"Overall Mean: {spikes.mean():.2f}/{model.K} spikes/neuron")
 print("\n")
 
 disp = ConfusionMatrixDisplay(confusion_matrix=cm.cpu().numpy())
