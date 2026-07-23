@@ -3,6 +3,7 @@ import math
 import matplotlib.pyplot as plt
 
 from torch.utils.data import Dataset
+from pathlib import Path
 
 def octagon_mask(n):
     cut = n // 4
@@ -48,24 +49,26 @@ class RingCountingDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
-        
+
 if __name__ == "__main__":
+
+    ROOT = Path(__file__).resolve().parents[2]
+    FIG_DIR = ROOT / "figures"
+    FIG_DIR.mkdir(exist_ok=True)
 
     ds = RingCountingDataset(n_events=2000, grid_size=32, max_rings=3, hits_per_ring=(15, 30), r_range=(0.15, 0.5), smear=0.01, noise_rate=0.01, seed=42)
     print(f"{len(ds)} events | shape {tuple(ds[0][0].shape)}")
     print(f"Label distribution: {torch.bincount(ds.y).tolist()}")
 
-    # Plot
-    fig, axes = plt.subplots(2, 4, figsize=(6, 6))
-    axes = axes.flatten()
-
+    fig, axes = plt.subplots(2, 4, figsize=(8, 6))
+    
     for ax, i in zip(axes.flatten(), range(8)):
-      img, lbl = ds[i]
-      axes[i].imshow(img.squeeze(), cmap='gray', interpolation='nearest')
-      axes[i].set_title(f"Label: {int(lbl)}", fontsize=10)
-      axes[i].axis('off')
-
-    plt.tight_layout()
-    plt.show()
-
+        img, lbl = ds[i]
+        ax.imshow(img.squeeze(), cmap='gray', interpolation='nearest')
+        ax.set_title(f"{int(lbl)+1} ring" + ("s" if lbl else ""), fontsize=10)
+        ax.axis('off')
+    fig.suptitle("Synthetic ring-counting events (octagonal 32x32 grid)")
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "sample_events.png", dpi=150, bbox_inches="tight")
+    print(f"Saved {FIG_DIR / 'sample_events.png'}")
 
