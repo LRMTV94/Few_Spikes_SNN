@@ -1,5 +1,7 @@
+import argparse
 import copy
 import json
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,7 +12,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.data.ring_synthetic import RingCountingDataset
-from src.model import FSNetwork, FSNeuron
+from src.model import FSNetwork, FSConvNetwork, Network
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -25,8 +27,12 @@ SEEDS = [0, 1, 2]
 RATIOS = [0.0, 0.5, 0.7, 0.8, 0.85, 0.88, 0.90, 0.92, 0.95, 0.98]
 MODE = "layer"
 
+p = argparse.ArgumentParser()
+p.add_argument("--arch", choices=["mlp", "cnn", "baseline"], default="baseline")
+args = p.parse_args()
+
 device = 'cuda' if torch.cuda.is_available() else "cpu"
-print(f"Device: {device}\n")
+print(f"Device: {device} | arch: {args.arch}\n")
 
 
 # Loading Syntethic Dataset
@@ -44,16 +50,20 @@ test_dl = DataLoader(test_ds, batch_size = 128, shuffle = False)
 
 # Helpers
 
+def prunable(model):
+    return [m for m in model.modules() if isinstance(m, (nn.Linear, nn.Conv2d))]
+
+
 def evaluate(model):
     model.eval()
-    fs_layers = [m for m in model.net if isinstance(m, FSNeuron)]
+    fs_layers = [m for m in model.modules() if isinstance(m, FSNeuron)]
     correct = total = n_batches = 0
     spike_sum = torch.zeros(len(fs_layers))
     silent_sum = torch.zeros(len(fs_layers))
 
     with torch.no_grad():
         for x, y in test_dl:
-            x = x.reshape(x.shape[0], -1).to(device)
+            x = x.to(device)
             y = y.to(device)
             correct += (model(x).argmax(dim=1) == y).sum().item()
             total += y.shape[0]
@@ -62,6 +72,8 @@ def evaluate(model):
                 silent_sum[i] += (m.last_spike_count == 0).float().mean().item()
             n_batches += 1
 
+    if not fs_layers:                       # baseline full-precision
+        return correct / total, float("nan"), float("nan")
     return correct / total, (spike_sum / n_batches).mean().item(), \
            (silent_sum / n_batches).mean().item()
 
@@ -72,7 +84,7 @@ def train(model, epochs, lr, desc="train"):
     for ep in range(epochs):
         for x, y in tqdm(train_dl, desc=f"{desc} {ep+1}/{epochs}", leave=False):
             opt.zero_grad()
-            x = x.reshape(x.shape[0], -1).to(device)
+            x = x.to(device)
             y = y.to(device)
             F.cross_entropy(model(x), y).backward()
             opt.step()
@@ -81,18 +93,16 @@ def train(model, epochs, lr, desc="train"):
 
 def weight_sparsity(model):
     z = n = 0
-    for m in model.net:
-        if isinstance(m, nn.Linear):
-            z += (m.weight == 0).sum().item()
-            n += m.weight.numel()
+    for m in prunable(model):
+        z += (m.weight == 0).sum().item()
+        n += m.weight.numel()
     return z / n
 
 
 def apply_pruning(model, ratio, mode=MODE):
-    """NON chiama prune.remove: le maschere restano attive nel fine-tuning."""
     if ratio == 0.0:
         return model
-    layers = [m for m in model.net if isinstance(m, nn.Linear)]
+    layers = prunable(model)
     if mode == "layer":
         for m in layers:
             prune.l1_unstructured(m, name="weight", amount=ratio)
@@ -104,9 +114,8 @@ def apply_pruning(model, ratio, mode=MODE):
 
 
 def make_permanent(model):
-    """Fonde le maschere nei pesi. SOLO dopo il fine-tuning."""
-    for m in model.net:
-        if isinstance(m, nn.Linear) and hasattr(m, "weight_mask"):
+    for m in prunable(model):
+        if hasattr(m, "weight_mask"):
             prune.remove(m, "weight")
     return model
 
@@ -117,24 +126,25 @@ nR, nS = len(RATIOS), len(SEEDS)
 acc_one = torch.zeros(nR, nS)      # accuracy one-shot
 acc_ft  = torch.zeros(nR, nS)      # accuracy dopo fine-tuning
 spk_one = torch.zeros(nR, nS)      # spike/neurone one-shot
-spk_ft  = torch.zeros(nR, nS)      # spike/neurone dopo fine-tuning
+spk_ft  = torch.zeros(nR, nS)      # spike/neuro-ne dopo fine-tuning
 sil_ft  = torch.zeros(nR, nS)      # frazione di neuroni silenti
 spars   = torch.zeros(nR, nS)      # sparsita' effettiva (controllo)
 dense   = torch.zeros(nS)          # accuracy della rete densa per seed
 
 print("=" * 68)
-print(f"Pruning sweep: {nR} ratios x {nS} seeds = {nR*nS} runs ({MODE}-wise)")
+print(f"Pruning sweep [{args.arch}]: {nR} ratios x {nS} seeds = {nR*nS} runs "
+      f"({MODE}-wise)")
 print("=" * 68)
 
 for j, seed in enumerate(SEEDS):
     print(f"\n--- seed {seed}: training dense baseline ---")
     torch.manual_seed(seed)
-    base = FSNetwork(input=1024, output=3, K=K, width=WIDTH).to(device)
+    base = build_model(args.arch, K=K, width=WIDTH).to(device)
     train(base, EPOCHS, LR, desc=f"dense s{seed}")
     a0, s0, si0 = evaluate(base)
     dense[j] = a0
     print(f"dense: acc {a0*100:.2f}% | {s0:.2f}/{K} spikes/neuron | "
-          f"silent {si0*100:.1f}%")
+          f"silent {si0*100:.1f}% | {sum(p.numel() for p in base.parameters()):,} params")
 
     for i, ratio in enumerate(RATIOS):
         m = apply_pruning(copy.deepcopy(base), ratio)
@@ -154,10 +164,10 @@ for j, seed in enumerate(SEEDS):
               f"-> fine-tuned {a2*100:5.2f}% | spikes {s1:.2f} -> {s2:.2f}{flag}")
 
 
-# Riepilogo: media +/- std sui seed
+# Mean +/- std over seed
 
 print("\n" + "=" * 68)
-print(f"Summary (mean +/- std over {nS} seeds)")
+print(f"Summary [{args.arch}] (mean +/- std over {nS} seeds)")
 print("=" * 68)
 print(f"Dense baseline: {dense.mean()*100:.2f}% +/- {dense.std()*100:.2f}%\n")
 print(f"{'ratio':>6} | {'one-shot':>16} | {'fine-tuned':>16} | {'spikes (ft)':>13} | {'silent':>7}")
@@ -169,7 +179,6 @@ for i, ratio in enumerate(RATIOS):
           f"{spk_ft[i].mean():5.2f} +/- {spk_ft[i].std():4.2f} | "
           f"{sil_ft[i].mean()*100:5.1f}%")
 
-# soglia: massimo ratio la cui accuracy media resta entro 1 pp dal controllo (ratio 0)
 ref = acc_ft[0].mean()
 ok = [RATIOS[i] for i in range(nR) if acc_ft[i].mean() >= ref - 0.01]
 print(f"\nMax sparsity within 1 pp of the fine-tuned dense control "
@@ -193,27 +202,27 @@ ax.tick_params(axis='y', labelcolor="tab:blue")
 ax.grid(alpha=0.3)
 ax.legend(loc="lower left", fontsize=8)
 
-ax2 = ax.twinx()
-ax2.errorbar(r, spk_ft.mean(1).tolist(), yerr=spk_ft.std(1).tolist(),
-             marker='s', color="tab:red", capsize=3, label="spikes/neuron")
-ax2.set_ylabel(f"spikes per neuron (of K={K})", color="tab:red")
-ax2.tick_params(axis='y', labelcolor="tab:red")
-ax2.set_ylim(0, K)
-ax2.legend(loc="upper right", fontsize=8)
+if not math.isnan(spk_ft[0].mean().item()):        # solo per modelli spiking
+    ax2 = ax.twinx()
+    ax2.errorbar(r, spk_ft.mean(1).tolist(), yerr=spk_ft.std(1).tolist(),
+                 marker='s', color="tab:red", capsize=3, label="spikes/neuron")
+    ax2.set_ylabel(f"spikes per neuron (of K={K})", color="tab:red")
+    ax2.tick_params(axis='y', labelcolor="tab:red")
+    ax2.set_ylim(0, K)
+    ax2.legend(loc="upper right", fontsize=8)
 
-ax.set_title(f"Accuracy and spike activity vs weight sparsity\n"
+ax.set_title(f"Accuracy and spike activity vs weight sparsity — {args.arch.upper()}\n"
              f"({MODE}-wise pruning, mean +/- std over {nS} seeds)")
 fig.tight_layout()
-fig.savefig("figures/pruning.png", dpi=150, bbox_inches="tight")
+fig.savefig(f"figures/pruning_{args.arch}.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 
-with open("results_pruning.json", "w") as f:
-    json.dump({"ratios": RATIOS, "seeds": SEEDS, "mode": MODE,
+with open(f"results_pruning_{args.arch}.json", "w") as f:
+    json.dump({"arch": args.arch, "ratios": RATIOS, "seeds": SEEDS, "mode": MODE,
                "dense": dense.tolist(),
                "acc_oneshot": acc_one.tolist(), "acc_finetuned": acc_ft.tolist(),
                "spikes_oneshot": spk_one.tolist(), "spikes_finetuned": spk_ft.tolist(),
                "silent_finetuned": sil_ft.tolist(), "sparsity": spars.tolist()},
               f, indent=2)
 
-print("\nSaved: figures/pruning.png, results_pruning.json")
-
+print(f"\nSaved: figures/pruning_{args.arch}.png, results_pruning_{args.arch}.json")
