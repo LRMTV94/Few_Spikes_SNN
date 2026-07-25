@@ -104,7 +104,6 @@ def apply_pruning(model, ratio, mode=MODE):
 
 
 def make_permanent(model):
-    """Fonde le maschere nei pesi. SOLO dopo il fine-tuning."""
     for m in model.net:
         if isinstance(m, nn.Linear) and hasattr(m, "weight_mask"):
             prune.remove(m, "weight")
@@ -169,7 +168,6 @@ for i, ratio in enumerate(RATIOS):
           f"{spk_ft[i].mean():5.2f} +/- {spk_ft[i].std():4.2f} | "
           f"{sil_ft[i].mean()*100:5.1f}%")
 
-# soglia: massimo ratio la cui accuracy media resta entro 1 pp dal controllo (ratio 0)
 ref = acc_ft[0].mean()
 ok = [RATIOS[i] for i in range(nR) if acc_ft[i].mean() >= ref - 0.01]
 print(f"\nMax sparsity within 1 pp of the fine-tuned dense control "
