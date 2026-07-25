@@ -76,6 +76,18 @@ energy-efficient.
 
 </div>
 
+### Confusion matrices
+
+<p align="center">
+<img src="figures/confusion_matrix_mlp.png" alt="MLP confusion matrix" width="500">
+<img src="figures/confusion_matrix_cnn.png" alt="CNN confusion matrix" width="500">
+</p>
+
+Errors are concentrated on adjacent ring counts (2↔3) and roughly symmetric —
+both models occasionally miscount overlapping rings, but neither shows a
+systematic bias. The CNN's sharper diagonal reflects its higher accuracy.
+
+
 Both FS models match the full-precision baseline. The CNN's convolutional prior
 suits a spatial task: it is **1.5 pp more accurate with 28× fewer parameters**.
 
@@ -105,8 +117,11 @@ single-spike activation — the opposite behaviour to the MLP.
 
 ### Pruning
 
-![Pruning — MLP](figures/pruning_mlp.png)
-![Pruning — CNN](figures/pruning_cnn.png)
+
+<p align="center">
+<img src="figures/pruning_mlp.png" alt="" width="700">
+<img src="figures/pruning_cnn.png" alt="" width="700">
+</p>
 
 Layer-wise L1 magnitude pruning (linear + conv weights), 3 seeds, 5 epochs of
 fine-tuning at LR/10 with masks kept active. The 0% row is the matched control.
