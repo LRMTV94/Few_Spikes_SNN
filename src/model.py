@@ -47,31 +47,93 @@ class FSNeuron(nn.Module):
     
     return out
 
-class FSNetwork(nn.Module):
-  def __init__(self, input, output, K, width):
+class Network(nn.Module):
+  def __init__(self, input_, output):
     super().__init__()
-    self.K = K
     self.net = nn.Sequential(
-       nn.Linear(input,256),
+    
+       nn.Linear(input_, 256),
        nn.BatchNorm1d(256),
-       FSNeuron(K=K,surrogate_width = width),
-       nn.Linear(256,128),
+       nn.ReLU(),
+       
+       nn.Linear(256, 128),
        nn.BatchNorm1d(128),
-       FSNeuron(K=K,surrogate_width = width),
-       nn.Linear(128,64),
+       nn.ReLU(),
+       
+       nn.Linear(128, 64),
        nn.BatchNorm1d(64),
-       FSNeuron(K=K,surrogate_width = width),
+       nn.ReLU(),
+       
        nn.Linear(64,output),
     )
 
-  def forward(self,x):
-    return self.net(x)
+  def forward(self, x):
+    return self.net(x.flatten(1))
 
+
+class FSNetwork(nn.Module):
+  def __init__(self, input_, output, K, width):
+    super().__init__()   
+    self.K = K
+    
+    self.net = nn.Sequential(
+       nn.Linear(input_, 256),
+       nn.BatchNorm1d(256),
+       FSNeuron(K=K,surrogate_width = width),
+       
+       nn.Linear(256, 128),
+       nn.BatchNorm1d(128),
+       FSNeuron(K=K,surrogate_width = width),
+       
+       nn.Linear(128, 64),
+       nn.BatchNorm1d(64),
+       FSNeuron(K=K,surrogate_width = width),
+       
+       nn.Linear(64, output),
+    )
+
+  def forward(self, x):
+    return self.net(x.flatten(1))
+
+class FSConvNetwork(nn.Module):
+    def __init__(self, input_ch, output, K, width):
+        super().__init__()
+        self.K = K
+        self.features = nn.Sequential(
+            nn.Conv2d(input_ch, 16, kernel_size=3, padding=1),
+            nn.BatchNorm2d(16),
+            FSNeuron(K, width),
+            nn.MaxPool2d(2),                     # 32x32 -> 16x16
+
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            FSNeuron(K, width),
+            nn.MaxPool2d(2),                     # 16x16 -> 8x8
+        )
+        self.classifier = nn.Linear(32 * 8 * 8, output)
+
+    def forward(self, x):
+        x = self.features(x)                     
+        return self.classifier(x.flatten(1))
+        
 if __name__ == "__main__":
 
     x = torch.randn(8, 1, 32, 32)
-    net = FSNetwork(input = 1024, output = 3, K = 4, width = 0.25).to(device)
-    x = x.reshape(x.shape[0],-1).to(device)
+    net_mlp = Network(input_ = 1024, output = 3).to(device)
+    x = x.to(device)
+    
+    print(net_mlp(x).shape)        		  # torch.Size([8, 3])
+    print(f"Total MLP parameters: {sum(p.numel() for p in net_mlp.parameters()):,}\n")
+
+    x = torch.randn(8, 1, 32, 32)
+    net = FSNetwork(input_ = 1024, output = 3, K = 4, width = 0.25).to(device)
+    x = x.to(device)
     
     print(net(x).shape)        		  # torch.Size([8, 3])
-    print(f"Total parameters: {sum(p.numel() for p in net.parameters()):,}")
+    print(f"Total FS-MLP parameters: {sum(p.numel() for p in net.parameters()):,}\n")
+    
+    x = torch.randn(8, 1, 32, 32)
+    net_cnn = FSConvNetwork(input_ch = 1, output = 3, K = 4, width = 0.25).to(device)
+    
+    print(net_cnn(x).shape)        		  # torch.Size([8, 3])
+    print(f"Total FS-CNN parameters: {sum(p.numel() for p in net_cnn.parameters()):,}")
