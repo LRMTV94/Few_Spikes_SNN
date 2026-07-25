@@ -43,16 +43,14 @@ print(f"Test's Lenght: {len(test_ds)}\n")
 
 
 # Helpers
-
 def build_model(K):
-    """K viene ignorato dalla baseline full-precision."""
     if args.arch == 'mlp':
         return FSNetwork(input_=1024, output=3, K=K, width=WIDTH)
     elif args.arch == 'cnn':
         return FSConvNetwork(input_ch=1, output=3, K=K, width=WIDTH)
     elif args.arch == 'baseline':
         return Network(input_=1024, output=3)
-    raise ValueError(f"arch sconosciuta: {args.arch}")
+    raise ValueError(f"Architecture Unknown: {args.arch}")
 
 
 def train_and_eval(K, seed, epochs=EPOCHS, verbose=False):
@@ -91,7 +89,6 @@ print(f"Parameters ({args.arch}): {n_params:,}\n")
 
 
 # Baseline
-
 if args.arch == 'baseline':
     print("=" * 60)
     print(f"Full-precision baseline  --  {len(SEEDS)} seeds")
@@ -145,7 +142,6 @@ if spread < 2 * stds.mean() * 100:
 else:
     print("=> K has an effect beyond seed variability.")
 
-# baseline salvata da un run precedente (opzionale)
 baseline = None
 if os.path.exists("results_baseline.json"):
     with open("results_baseline.json") as f:
@@ -158,7 +154,6 @@ else:
 
 
 # Plots
-
 fig, ax = plt.subplots(1, 2, figsize=(11, 4))
 
 ax[0].errorbar(K_VALUES, (means * 100).tolist(), yerr=(stds * 100).tolist(),

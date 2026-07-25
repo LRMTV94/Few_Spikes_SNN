@@ -8,28 +8,30 @@ import torch.nn.functional as F
 import torch.nn.utils.prune as prune
 
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.data.ring_synthetic import RingCountingDataset
-from src.model import FSNetwork, FSConvNetwork, Network
+from src.model import FSNetwork, FSConvNetwork, Network, FSNeuron
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
 # Experimental Parameters
-K = 4
 WIDTH = 0.25
 EPOCHS = 15
 FINETUNE_EPOCHS = 5
+
 LR = 1e-3
 SEEDS = [0, 1, 2]
 RATIOS = [0.0, 0.5, 0.7, 0.8, 0.85, 0.88, 0.90, 0.92, 0.95, 0.98]
+DEFAULT_K = {"mlp": 4, "cnn": 1, "baseline": None}
 MODE = "layer"
 
 p = argparse.ArgumentParser()
 p.add_argument("--arch", choices=["mlp", "cnn", "baseline"], default="baseline")
+p.add_argument("--K", type=int, default=None)
 args = p.parse_args()
+K = args.K if args.K is not None else DEFAULT_K[args.arch]
 
 device = 'cuda' if torch.cuda.is_available() else "cpu"
 print(f"Device: {device} | arch: {args.arch}\n")
@@ -44,11 +46,21 @@ print(f"Loaded Completed!")
 print(f"Train's Lenght: {len(train_ds)}")
 print(f"Test's Lenght:  {len(test_ds)}\n")
 
-train_dl = DataLoader(train_ds, batch_size = 64, shuffle = True)
-test_dl = DataLoader(test_ds, batch_size = 128, shuffle = False)
+train_dl = DataLoader(train_ds, batch_size=64, shuffle=True)
+test_dl = DataLoader(test_ds, batch_size=128, shuffle=False)
 
 
 # Helpers
+
+def build_model():
+    if args.arch == 'mlp':
+    	return FSNetwork(input_=1024, output=3, K=K, width=WIDTH)
+    elif args.arch == 'cnn':
+    	return FSConvNetwork(input_ch=1, output=3, K=K, width=WIDTH)
+    elif args.arch == 'baseline':
+        return Network(input_=1024, output=3)
+    raise ValueError(f"Architecture Unknown: {args.arch}")
+
 
 def prunable(model):
     return [m for m in model.modules() if isinstance(m, (nn.Linear, nn.Conv2d))]
@@ -74,8 +86,7 @@ def evaluate(model):
 
     if not fs_layers:                       # baseline full-precision
         return correct / total, float("nan"), float("nan")
-    return correct / total, (spike_sum / n_batches).mean().item(), \
-           (silent_sum / n_batches).mean().item()
+    return correct / total, (spike_sum / n_batches).mean().item(),(silent_sum / n_batches).mean().item()
 
 
 def train(model, epochs, lr, desc="train"):
@@ -107,9 +118,7 @@ def apply_pruning(model, ratio, mode=MODE):
         for m in layers:
             prune.l1_unstructured(m, name="weight", amount=ratio)
     else:
-        prune.global_unstructured([(m, "weight") for m in layers],
-                                  pruning_method=prune.L1Unstructured,
-                                  amount=ratio)
+        prune.global_unstructured([(m, "weight") for m in layers], pruning_method=prune.L1Unstructured, amount=ratio)
     return model
 
 
@@ -124,12 +133,12 @@ def make_permanent(model):
 
 nR, nS = len(RATIOS), len(SEEDS)
 acc_one = torch.zeros(nR, nS)      # accuracy one-shot
-acc_ft  = torch.zeros(nR, nS)      # accuracy dopo fine-tuning
+acc_ft  = torch.zeros(nR, nS)      # accuracy (after) fine-tuning
 spk_one = torch.zeros(nR, nS)      # spike/neurone one-shot
-spk_ft  = torch.zeros(nR, nS)      # spike/neuro-ne dopo fine-tuning
-sil_ft  = torch.zeros(nR, nS)      # frazione di neuroni silenti
-spars   = torch.zeros(nR, nS)      # sparsita' effettiva (controllo)
-dense   = torch.zeros(nS)          # accuracy della rete densa per seed
+spk_ft  = torch.zeros(nR, nS)      # spike/neurone (after) fine-tuning
+sil_ft  = torch.zeros(nR, nS)      # Silent Neurons
+spars   = torch.zeros(nR, nS)      # Sparsity
+dense   = torch.zeros(nS)
 
 print("=" * 68)
 print(f"Pruning sweep [{args.arch}]: {nR} ratios x {nS} seeds = {nR*nS} runs "
@@ -139,32 +148,39 @@ print("=" * 68)
 for j, seed in enumerate(SEEDS):
     print(f"\n--- seed {seed}: training dense baseline ---")
     torch.manual_seed(seed)
-    base = build_model(args.arch, K=K, width=WIDTH).to(device)
+    base = build_model().to(device)
+    
     train(base, EPOCHS, LR, desc=f"dense s{seed}")
     a0, s0, si0 = evaluate(base)
     dense[j] = a0
-    print(f"dense: acc {a0*100:.2f}% | {s0:.2f}/{K} spikes/neuron | "
-          f"silent {si0*100:.1f}% | {sum(p.numel() for p in base.parameters()):,} params")
+    
+    n_par = sum(q.numel() for q in base.parameters())
+    
+    if math.isnan(s0):
+        print(f"dense: acc {a0*100:.2f}% | full-precision | {n_par:,} params")
+    else:
+        print(f"dense: acc {a0*100:.2f}% | {s0/K:.2f} spikes/neuron | silent {si0*100:.1f}% | {n_par:,} params")
 
     for i, ratio in enumerate(RATIOS):
         m = apply_pruning(copy.deepcopy(base), ratio)
 
-        a1, s1, _ = evaluate(m)                        # one-shot
+        a1, s1, _ = evaluate(m)
         train(m, FINETUNE_EPOCHS, LR / 10, desc=f"ft s{seed} r{ratio}")
-        make_permanent(m)                              # solo ora
+        make_permanent(m)
         a2, s2, si2 = evaluate(m)
-        sp = weight_sparsity(m)                        # controllo
+        sp = weight_sparsity(m)
 
         acc_one[i, j], acc_ft[i, j] = a1, a2
         spk_one[i, j], spk_ft[i, j] = s1, s2
         sil_ft[i, j], spars[i, j] = si2, sp
 
         flag = "" if abs(sp - ratio) < 0.02 else "  <-- SPARSITA' NON RISPETTATA"
+        spike_str = f"spikes {s1:.2f} -> {s2:.2f}" if not math.isnan(s1) else "full-precision"
         print(f"  ratio {ratio:4.2f} (sp {sp*100:5.1f}%) | one-shot {a1*100:5.2f}% "
-              f"-> fine-tuned {a2*100:5.2f}% | spikes {s1:.2f} -> {s2:.2f}{flag}")
+              f"-> fine-tuned {a2*100:5.2f}% | {spike_str}{flag}")
 
 
-# Mean +/- std over seed
+# Mean +/- std on seed
 
 print("\n" + "=" * 68)
 print(f"Summary [{args.arch}] (mean +/- std over {nS} seeds)")
@@ -173,11 +189,14 @@ print(f"Dense baseline: {dense.mean()*100:.2f}% +/- {dense.std()*100:.2f}%\n")
 print(f"{'ratio':>6} | {'one-shot':>16} | {'fine-tuned':>16} | {'spikes (ft)':>13} | {'silent':>7}")
 print("-" * 68)
 for i, ratio in enumerate(RATIOS):
+    spk_str = "     n/a     " if math.isnan(spk_ft[i].mean().item()) \
+              else f"{spk_ft[i].mean():5.2f} +/- {spk_ft[i].std():4.2f}"
+    sil_str = "  n/a " if math.isnan(sil_ft[i].mean().item()) \
+              else f"{sil_ft[i].mean()*100:5.1f}%"
     print(f"{ratio:6.2f} | "
           f"{acc_one[i].mean()*100:6.2f}% +/- {acc_one[i].std()*100:4.2f} | "
           f"{acc_ft[i].mean()*100:6.2f}% +/- {acc_ft[i].std()*100:4.2f} | "
-          f"{spk_ft[i].mean():5.2f} +/- {spk_ft[i].std():4.2f} | "
-          f"{sil_ft[i].mean()*100:5.1f}%")
+          f"{spk_str} | {sil_str}")
 
 ref = acc_ft[0].mean()
 ok = [RATIOS[i] for i in range(nR) if acc_ft[i].mean() >= ref - 0.01]
@@ -189,12 +208,8 @@ print(f"\nMax sparsity within 1 pp of the fine-tuned dense control "
 
 r = [x * 100 for x in RATIOS]
 fig, ax = plt.subplots(figsize=(7, 4.5))
-
-ax.errorbar(r, (acc_one.mean(1)*100).tolist(), yerr=(acc_one.std(1)*100).tolist(),
-            marker='o', ls='--', color="tab:blue", alpha=0.55, capsize=3,
-            label="one-shot")
-ax.errorbar(r, (acc_ft.mean(1)*100).tolist(), yerr=(acc_ft.std(1)*100).tolist(),
-            marker='o', color="tab:blue", capsize=3, label="fine-tuned")
+ax.errorbar(r, (acc_one.mean(1)*100).tolist(), yerr=(acc_one.std(1)*100).tolist(), marker='o', ls='--', color="tab:blue", alpha=0.55, capsize=3, label="one-shot")
+ax.errorbar(r, (acc_ft.mean(1)*100).tolist(), yerr=(acc_ft.std(1)*100).tolist(), marker='o', color="tab:blue", capsize=3, label="fine-tuned")
 ax.axhline(ref.item()*100, color='k', ls=':', lw=1, label="dense control")
 ax.set_xlabel("weight sparsity [%]")
 ax.set_ylabel("test accuracy [%]", color="tab:blue")
@@ -202,10 +217,9 @@ ax.tick_params(axis='y', labelcolor="tab:blue")
 ax.grid(alpha=0.3)
 ax.legend(loc="lower left", fontsize=8)
 
-if not math.isnan(spk_ft[0].mean().item()):        # solo per modelli spiking
+if not math.isnan(spk_ft[0].mean().item()):
     ax2 = ax.twinx()
-    ax2.errorbar(r, spk_ft.mean(1).tolist(), yerr=spk_ft.std(1).tolist(),
-                 marker='s', color="tab:red", capsize=3, label="spikes/neuron")
+    ax2.errorbar(r, spk_ft.mean(1).tolist(), yerr=spk_ft.std(1).tolist(), marker='s', color="tab:red", capsize=3, label="spikes/neuron")
     ax2.set_ylabel(f"spikes per neuron (of K={K})", color="tab:red")
     ax2.tick_params(axis='y', labelcolor="tab:red")
     ax2.set_ylim(0, K)
